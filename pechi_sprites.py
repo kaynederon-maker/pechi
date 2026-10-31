@@ -66,11 +66,16 @@ EYES = {
     "happy": ("fef", "efe", "fff"),
     "cry": ("ewe", "eee", "eTe"),
     "look": ("fwe", "fee", "fee"),
+    "love": ("pfp", "ppp", "fpf"),
+    "wide": ("www", "wew", "www"),
+    "cross": ("kkk", "ewe", "eee"),
 }
 MOUTHS = {
     "smile": ((20, 10, "l"), (20, 15, "l"), (21, 11, "llll")),
     "open": ((20, 11, "pppp"), (21, 11, "pppp")),
     "tongue": ((20, 11, "pppp"), (21, 11, "pppp"), (22, 12, "pp")),
+    "wow": ((20, 12, "pp"), (21, 12, "pp")),
+    "frown": ((20, 11, "llll"), (21, 10, "l"), (21, 15, "l")),
 }
 TAILS = (
     ((24, 21, "oo"), (25, 21, "ffko"), (26, 21, "ooo")),

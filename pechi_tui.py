@@ -26,6 +26,7 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.events import Click
 from textual.screen import ModalScreen, Screen
 from textual.suggester import SuggestFromList
 from textual.widgets import Input, Markdown, OptionList, Static
@@ -57,8 +58,18 @@ PREVIEW_LINES = 6  # of a tool's output shown under its step line
 PREVIEW_CHARS = 500
 ASK_POLL_SECONDS = 0.2
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
-COMMANDS = ("/auto", "/brain", "/theme", "/clear", "/help", "/quit")
-HINTS = "ctrl+t switch brain   ctrl+g theme   /auto continue all   pgup/pgdn scroll   esc stop   /help"
+COMMANDS = (
+    "/auto",
+    "/boop",
+    "/brain",
+    "/clear",
+    "/help",
+    "/pet",
+    "/quit",
+    "/theme",
+    "/treat",
+)
+HINTS = "click pechi to pet   ctrl+t brain   ctrl+g theme   /auto continue all   pgup/pgdn scroll   esc stop   /help"
 # A bare "continue" tells a model nothing, and the 35B answered it by copying its work.
 RESUME_NOTE = (
     "Your last task stopped before it finished, and your work so far is above. If this "
@@ -79,15 +90,52 @@ Read and write files in this folder, run commands and Python, search the web, an
 - `esc` stops the current task, and "continue" picks it up again
 - `/quit` or `ctrl+q` leaves
 
-Pechi asks before writing files, running anything, or opening a new website. Press `c` on that card, or type `/auto`, to continue all: Pechi stops asking and stays that way, except for high-risk calls, which always ask."""
+Pechi asks before writing files, running anything, or opening a new website. Press `c` on that card, or type `/auto`, to continue all: Pechi stops asking and stays that way, except for high-risk calls, which always ask.
+
+**Pechi loves attention**
+
+Click Pechi to pet: the ears and head get scritches, the nose gets a boop, and the belly gets a rub. Without a mouse, use `/pet` or `ctrl+p`, and `/boop`. `/treat` is always welcome. Keep going and see what happens."""
 SAYINGS = {
-    "idle": ("wan!", "hff hff", "...?", "ready!", "good day!"),
+    "idle": ("wan!", "hff hff", "...?", "ready!", "good day!", "pet me?"),
     "think": ("sniff sniff...", "hmm hmm...", "on it!", "thinking..."),
     "talk": ("wan wan!", "found it!", "here!"),
     "happy": ("yatta!", "all done!", "wan wan wan!"),
     "cry": ("uu...", "oh no...", "sorry..."),
     "sleep": ("zzz...",),
+    "love": ("hff hff...", "more pets!", "mmmm..."),
+    "boop": ("boop!", "!?"),
+    "chew": ("nom nom nom",),
+    "zoom": ("ZOOMIES!!",),
+    "pout": ("hmph.",),
 }
+ZONE_MOODS = {
+    "ears": "love",
+    "head": "love",
+    "nose": "boop",
+    "belly": "love",
+    "treat": "chew",
+}
+ZONE_WORDS = {
+    "ears": ("ear scritches!!", "right there!", "mmm, ears..."),
+    "head": ("hff hff...", "good pets!", "more pets!", "mmmm..."),
+    "nose": ("boop!", "!?", "achoo!", "hey, my nose!"),
+    "belly": ("belly rubs!!", "my leg is kicking!", "wan wan wan!"),
+    "treat": ("nom nom nom", "yum!", "more? more?"),
+}
+MILESTONES = {
+    10: "10 pets! we're friends!",
+    50: "50 pets! best friends!",
+    100: "100 pets!! i love you!",
+    500: "500 pets!!! yours forever!",
+}
+STREAK_SECONDS = 4.0  # a touch within this long of the last one builds the streak
+ZOOM_STREAK = 7  # enough attention to set off the zoomies
+TIRED_STREAK = 14  # too much attention, even for a very good dog
+ZOOM_PATH = ((-2, 0), (0, -2), (2, 0), (0, -1), (-2, 0), (2, -1), (-1, 0), (0, 0))
+ZOOM_STEP_SECONDS = 0.14
+TOUCH_HEARTS = 2
+CELEBRATE_HEARTS = 4
+MARKERS = ("Thought:", "Action:", "Final Answer:")
 TOOL_WORDS = {
     "list_dir": "peeking in the folder",
     "read_file": "reading a file",
@@ -97,7 +145,15 @@ TOOL_WORDS = {
     "web_search": "sniffing around the web",
     "web_fetch": "fetching a page",
 }
-MOOD_SECONDS = {"happy": 3.0, "cry": 4.0}
+MOOD_SECONDS = {
+    "happy": 3.0,
+    "cry": 4.0,
+    "love": 3.0,
+    "boop": 1.6,
+    "chew": 2.5,
+    "zoom": 2.5,
+    "pout": 3.5,
+}
 HEARTS_TOP = 18  # the first sidebar row below the bubble
 SWAP_EXIT_SECONDS = 0.35  # matches the swap card's exit in pechi.tcss
 SWAP_MIN_SECONDS = 0.9
@@ -135,6 +191,15 @@ def trimmed(text: str) -> str:
     return f"[start elided]\n{text[-HISTORY_CHARS:]}"
 
 
+def settled(answer: str) -> str:
+    """A streaming answer without a last line that could be a marker still arriving,
+    which would otherwise flash on screen until the reply is cut there."""
+    head, _, last = answer.rpartition("\n")
+    word = last.strip("*_# ")
+    unfinished = word and any(marker.startswith(word) for marker in MARKERS)
+    return head.rstrip() if unfinished else answer
+
+
 def load_config() -> dict:
     try:
         config = json.loads(CONFIG.read_text(encoding="utf-8"))
@@ -163,12 +228,45 @@ def pose_for(mood: str, frame: int) -> Pose:
         return Pose(eyes="cry", bob=frame // 6 % 2)
     if mood == "sleep":
         return Pose(eyes="blink", bob=frame // 10 % 2)
+    if mood == "love":
+        return Pose(eyes="love", mouth="tongue", tail=frame % 3, bob=frame // 2 % 2)
+    if mood == "boop":
+        return Pose(eyes="wide", mouth="wow", tail=frame // 3 % 3)
+    if mood == "chew":
+        mouth = "open" if frame % 2 else "smile"
+        return Pose(eyes="happy", mouth=mouth, tail=frame % 3, bob=frame % 2)
+    if mood == "zoom":
+        return Pose(eyes="happy", mouth="tongue", tail=frame % 3, bob=frame % 2)
+    if mood == "pout":
+        return Pose(eyes="cross", mouth="frown", bob=frame // 8 % 2)
     eyes = "blink" if frame % 44 < 2 else "open"
     return Pose(eyes=eyes, tail=(0, 0, 1, 0)[frame // 4 % 4], bob=frame // 10 % 2)
 
 
+def zone_of(x: int, y: int) -> str:
+    """The part of Pechi under a click, in the sprite's 26 by 14 terminal cells."""
+    if y <= 4:
+        return "ears"
+    if y >= 11:
+        return "belly"
+    if y >= 8 and 8 <= x <= 17:
+        return "nose"
+    return "head"
+
+
+def reaction(zone: str, streak: int, asleep: bool) -> tuple[str, str]:
+    """The mood and words for a touch, which change as the attention builds up."""
+    if asleep:
+        return "boop", "!? oh, it's you!"
+    if streak >= TIRED_STREAK:
+        return "pout", "okay okay, enough!"
+    if streak >= ZOOM_STREAK:
+        return "zoom", "ZOOMIES!!"
+    return ZONE_MOODS[zone], choice(ZONE_WORDS[zone])
+
+
 class Mascot(Static):
-    """Pechi, breathing and blinking on a steady clock."""
+    """Pechi, breathing and blinking on a steady clock, and glad of the attention."""
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -195,6 +293,19 @@ class Mascot(Static):
         self.styles.offset = (0, -2)
         self.set_timer(0.18, lambda: setattr(self.styles, "offset", (0, 0)))
 
+    def zoom(self) -> None:
+        """Tear around the sidebar, ending back where Pechi started."""
+        path = iter(ZOOM_PATH)
+        self.set_interval(
+            ZOOM_STEP_SECONDS,
+            lambda: setattr(self.styles, "offset", next(path)),
+            repeat=len(ZOOM_PATH),
+        )
+
+    def on_click(self, event: Click) -> None:
+        if self.id == "mascot":  # the intro has a Pechi too, but no one to react
+            self.app.touch(zone_of(event.x, event.y))
+
 
 class Turn(Vertical):
     """One exchange: the reasoning and tool work of every step, then the answer."""
@@ -216,8 +327,8 @@ class Turn(Vertical):
         thought, answer = split_reply(clean(raw))
         if thought and thought != self.thought_text:
             self.show_thought(thought)
-        if answer:
-            await self.show_answer(answer)
+        if settled(answer):
+            await self.show_answer(settled(answer))
 
     def show_thought(self, text: str) -> None:
         self.thought_text = text
@@ -395,6 +506,7 @@ class PechiApp(App[None]):
         Binding("ctrl+l", "clear", priority=True),
         Binding("escape", "stop"),
         Binding("ctrl+q", "quit", priority=True),
+        Binding("ctrl+p", "touch('head')"),
         Binding("pageup", "chat_page(-1)"),
         Binding("pagedown", "chat_page(1)"),
     ]
@@ -414,6 +526,11 @@ class PechiApp(App[None]):
         self.history: tuple = ()
         self.resuming = False  # the last task stopped and its work is in the history
         self.trusted_sites: set[str] = set()
+        saved_pets = self.config.get("pets")
+        self.pets = saved_pets if type(saved_pets) is int else 0
+        self.streak = 0
+        self.last_touch = 0.0
+        self.mood_timer = None
         self.quiet_frames = 0
         self.swap_frame = 0
         self.swap_timer = None
@@ -498,6 +615,7 @@ class PechiApp(App[None]):
                 "theme": self.theme,
                 "brain": self.brain.index,
                 "auto": self.config.get("auto") is True,
+                "pets": self.pets,
             }
         )
 
@@ -514,12 +632,37 @@ class PechiApp(App[None]):
         bubble.update(words or choice(SAYINGS[mood]))
         bubble.styles.opacity = 0.0
         bubble.styles.animate("opacity", 1.0, duration=0.25, easing="out_cubic")
+        if self.mood_timer:  # or an old mood's timer would cut this one short
+            self.mood_timer.stop()
+            self.mood_timer = None
         if mood in MOOD_SECONDS:
-            self.set_timer(MOOD_SECONDS[mood], self.calm_down)
+            self.mood_timer = self.set_timer(MOOD_SECONDS[mood], self.calm_down)
 
     def calm_down(self) -> None:
-        if not self.busy:
-            self.say_mood("idle")
+        self.say_mood("think" if self.busy else "idle")
+
+    def action_touch(self, zone: str) -> None:
+        self.touch(zone)
+
+    def touch(self, zone: str) -> None:
+        """Pechi reacts to a pet, a boop or a treat. It never touches a running task."""
+        now = time.monotonic()
+        self.streak = self.streak + 1 if now - self.last_touch < STREAK_SECONDS else 1
+        self.last_touch, self.quiet_frames = now, 0
+        self.pets += 1
+        mood, words = reaction(zone, self.streak, self.mascot.mood == "sleep")
+        words = MILESTONES.get(self.pets, words)
+        self.say_mood(mood, words)
+        if mood == "zoom":
+            self.mascot.zoom()
+            self.float_hearts(TOUCH_HEARTS)
+        elif mood != "pout":
+            self.mascot.hop()
+            self.float_hearts(TOUCH_HEARTS)
+        if self.pets in MILESTONES:
+            self.save()
+        if self.streak == 1 and not self.side.display:
+            self.add_note(f"*{words}*")  # no sidebar here, so say it once in the chat
 
     def settle(self) -> None:
         """After a long quiet spell, Pechi curls up for a nap."""
@@ -578,6 +721,8 @@ class PechiApp(App[None]):
         name = text.split()[0].lower()
         if name == "/auto":
             self.set_auto(not self.auto)
+        elif name in ("/pet", "/boop", "/treat"):
+            self.touch({"/pet": "head", "/boop": "nose", "/treat": "treat"}[name])
         elif name == "/brain":
             self.action_toggle_brain()
         elif name == "/theme":
@@ -692,6 +837,7 @@ class PechiApp(App[None]):
 
     def on_unmount(self) -> None:
         self.stop_flag.set()  # releases a worker waiting on an approval
+        self.save()  # keeps the pets, which are not written on every single pet
 
     def ask(self, name: str, args: dict, flagged: bool) -> bool:
         """Runs on the worker thread and waits for the owner's answer."""
@@ -765,6 +911,9 @@ class PechiApp(App[None]):
     def celebrate(self) -> None:
         """Pechi hops, and little hearts float up and fade."""
         self.mascot.hop()
+        self.float_hearts(CELEBRATE_HEARTS)
+
+    def float_hearts(self, count: int) -> None:
         side = self.side
         if not side.display:
             return
@@ -773,7 +922,7 @@ class PechiApp(App[None]):
         bottom = side.size.height - 3
         if bottom <= HEARTS_TOP:
             return
-        for _ in range(4):
+        for _ in range(count):
             x, y = randint(3, 26), bottom - randint(0, 2)
             heart = Static("♡", classes="heart", markup=False)
             heart.styles.offset = (x, y)

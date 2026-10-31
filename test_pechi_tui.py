@@ -285,6 +285,45 @@ def test_continuing_cannot_run_for_ever(ollama):
     assert reply == "x" * (agent.MAX_CONTINUES + 1)
 
 
+def test_a_reply_stops_being_read_once_its_tool_call_is_complete(ollama):
+    ollama["replies"] = [read_step() + "\nThought: x\nFinal Answer: invented"]
+    reply = agent.Brain().chat([{"role": "user", "content": "go"}])
+    assert reply == read_step()
+
+
+def test_a_reply_stops_being_read_once_it_has_answered(ollama):
+    ollama["replies"] = ["Thought: a\nFinal Answer: done\nThought: b\nFinal Answer: c"]
+    reply = agent.Brain().chat([{"role": "user", "content": "go"}])
+    assert reply == "Thought: a\nFinal Answer: done"
+
+
+def test_an_answer_imagined_before_the_tool_ran_never_reaches_the_screen(
+    tmp_path, ollama
+):
+    (tmp_path / "a.txt").write_text("x")
+    invented = "Thought: read it\nFinal Answer: INVENTED " + "word " * 60
+    ollama["replies"] = [
+        f"{read_step()}\n{invented}",
+        "Thought: done\nFinal Answer: the real answer",
+    ]
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await send(pilot, "read it")
+        shown = []
+        for _ in range(300):
+            await pilot.pause(0.01)
+            shown.extend(m.source for m in app.query(Markdown) if m.has_class("on"))
+            if not app.busy:
+                break
+        await until_idle(pilot)
+        assert "INVENTED" not in " ".join(shown)
+        assert answers(app)[-1] == "the real answer"
+        assert len(ollama["chats"]) == 2
+
+    drive(app, script)
+
+
 def test_the_word_observation_cannot_cut_an_answer_short(ollama):
     ollama["replies"] = ["Thought: ok\nFinal Answer: Observation: it rises. Done."]
     reply = agent.Brain().chat([{"role": "user", "content": "go"}])
@@ -493,7 +532,8 @@ def test_the_resume_note_goes_out_once_and_only_after_a_stop(tmp_path, ollama):
 
 
 def test_clearing_the_chat_forgets_a_stopped_task(tmp_path, ollama):
-    ollama["replies"] = ["Thought: the plan"] * 3 + ["Thought: x\nFinal Answer: ok"]
+    ollama["replies"] = ["Thought: the plan"] * agent.MAX_FAILURES
+    ollama["replies"] = [*ollama["replies"], "Thought: x\nFinal Answer: ok"]
     app = make_app(tmp_path)
 
     async def script(pilot):
@@ -508,7 +548,7 @@ def test_clearing_the_chat_forgets_a_stopped_task(tmp_path, ollama):
 
 
 def test_a_breaker_stop_keeps_the_work_too(tmp_path, ollama):
-    ollama["replies"] = ["Thought: the plan so far"] * 3
+    ollama["replies"] = ["Thought: the plan so far"] * agent.MAX_FAILURES
     app = make_app(tmp_path)
 
     async def script(pilot):
@@ -730,6 +770,229 @@ def test_a_timer_under_an_open_card_does_not_crash(tmp_path, ollama):
     drive(app, script)
 
 
+@pytest.mark.parametrize(
+    "x, y, zone",
+    [
+        (6, 2, "ears"),
+        (19, 3, "ears"),
+        (4, 6, "head"),
+        (12, 6, "head"),
+        (2, 9, "head"),
+        (12, 9, "nose"),
+        (12, 12, "belly"),
+    ],
+)
+def test_each_part_of_pechi_is_its_own_zone(x, y, zone):
+    assert tui.zone_of(x, y) == zone
+
+
+def test_clicking_pechi_gets_a_reaction_and_keeps_the_prompt_ready(tmp_path, ollama):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        await pilot.click("#mascot", offset=(12, 9))
+        await pilot.pause(0.05)
+        assert app.mascot.mood == "boop"
+        await pilot.click("#mascot", offset=(4, 6))
+        await pilot.pause(0.05)
+        assert app.mascot.mood == "love"
+        assert app.query_one("#prompt").has_focus
+        assert app.pets == 2
+
+    drive(app, script)
+
+
+def test_a_long_petting_session_builds_to_zoomies_then_enough(tmp_path, ollama):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        moods = []
+        for _ in range(tui.TIRED_STREAK):
+            app.touch("head")
+            moods.append(app.mascot.mood)
+            await pilot.pause()
+        assert moods[0] == "love"
+        assert moods[tui.ZOOM_STREAK - 1] == "zoom"
+        assert moods[-1] == "pout"
+
+    drive(app, script)
+
+
+def test_the_streak_fades_after_a_pause(tmp_path, ollama):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        app.streak, app.last_touch = tui.ZOOM_STREAK, 0.0
+        app.touch("head")
+        assert app.mascot.mood == "love" and app.streak == 1
+
+    drive(app, script)
+
+
+def test_a_touch_wakes_a_sleeping_pechi(tmp_path, ollama):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        app.say_mood("sleep")
+        app.touch("head")
+        assert app.mascot.mood == "boop"
+        assert "it's you" in str(app.bubble.render())
+
+    drive(app, script)
+
+
+def test_a_reaction_mid_task_goes_back_to_thinking(tmp_path, ollama, monkeypatch):
+    monkeypatch.setitem(tui.MOOD_SECONDS, "love", 0.05)
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        app.busy = True
+        app.touch("head")
+        await pilot.pause(0.2)
+        assert app.mascot.mood == "think"
+        app.busy = False
+
+    drive(app, script)
+
+
+def test_quick_pets_do_not_cut_each_other_short(tmp_path, ollama, monkeypatch):
+    monkeypatch.setitem(tui.MOOD_SECONDS, "love", 0.3)
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        app.touch("head")
+        await pilot.pause(0.2)
+        app.touch("head")
+        await pilot.pause(0.2)  # past the first pet's timer, not the second's
+        assert app.mascot.mood == "love"
+
+    drive(app, script)
+
+
+def test_pets_survive_a_restart_and_milestones_are_celebrated(tmp_path, ollama):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        app.pets = 9
+        app.touch("head")
+        assert "10 pets" in str(app.bubble.render())
+
+    drive(app, script)
+    assert make_app(tmp_path).pets == 10
+
+
+@pytest.mark.parametrize(
+    "command, mood", [("/pet", "love"), ("/boop", "boop"), ("/treat", "chew")]
+)
+def test_commands_reach_pechi_without_a_mouse(tmp_path, ollama, command, mood):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await send(pilot, command)
+        assert app.mascot.mood == mood
+
+    drive(app, script)
+
+
+@pytest.mark.parametrize(
+    "streaming, shown",
+    [
+        ("Done.\nThou", "Done."),
+        ("Done.\n\n**Fin", "Done."),
+        ("Done.\nAct", "Done."),
+        ("Done.\nThousands of them", "Done.\nThousands of them"),
+        ("Done.", "Done."),
+    ],
+)
+def test_a_half_written_marker_never_flashes_in_the_answer(streaming, shown):
+    assert tui.settled(streaming) == shown
+
+
+def test_a_last_line_held_back_still_lands_in_the_finished_answer(tmp_path, ollama):
+    ollama["replies"] = ["Thought: ok\nFinal Answer: Pick one:\nA"]
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await send(pilot, "go")
+        await until_idle(pilot)
+        assert answers(app)[-1] == "Pick one:\nA"
+
+    drive(app, script)
+
+
+def test_the_pet_key_stays_out_of_an_approval_card(tmp_path, ollama):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        app.push_screen(tui.Approval("write_file", {"path": "a"}, False, None))
+        await pilot.pause(0.05)
+        await pilot.press("ctrl+p")
+        await pilot.pause(0.05)
+        assert app.pets == 0
+
+    drive(app, script)
+
+
+def test_a_petting_streak_adds_one_note_on_a_narrow_window(tmp_path, ollama):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        before = len(app.query(tui.Turn))
+        for _ in range(5):
+            app.touch("head")
+            await pilot.pause()
+        await pilot.pause(0.2)
+        assert len(app.query(tui.Turn)) == before + 1
+
+    drive(app, script, size=(70, 24))
+
+
+def test_the_pet_key_works_from_the_prompt(tmp_path, ollama):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        await pilot.press("ctrl+p")
+        await pilot.pause(0.05)
+        assert app.pets == 1
+
+    drive(app, script)
+
+
+def test_a_reaction_shows_in_the_chat_when_the_sidebar_is_hidden(tmp_path, ollama):
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await pilot.pause(0.05)
+        before = len(answers(app))
+        await send(pilot, "/pet")
+        await pilot.pause(0.2)
+        assert len(answers(app)) == before + 1
+
+    drive(app, script, size=(70, 24))
+
+
+def test_the_intro_mascot_ignores_clicks(tmp_path, ollama):
+    app = tui.PechiApp(tmp_path, intro=True)
+
+    async def script(pilot):
+        await pilot.pause(0.1)
+        await pilot.click("#intro-pup")
+        await pilot.pause(0.05)
+        assert app.pets == 0
+
+    drive(app, script)
+
+
 def test_terminal_control_codes_are_dropped():
     assert tui.clean("a\x1b[2Jb\x07\nc") == "a[2Jb\nc"
     assert tui.clean("a\x9b2Jb") == "a2Jb"  # the 8-bit form of the same escape
@@ -802,7 +1065,7 @@ def test_a_broken_config_falls_back_to_defaults(tmp_path, ollama, text):
     tui.CONFIG.parent.mkdir()
     tui.CONFIG.write_text(text)
     app = make_app(tmp_path)
-    assert app.theme == "beige" and app.brain.index == 0
+    assert app.theme == "beige" and app.brain.index == 0 and app.pets == 0
 
 
 def test_theme_picker_previews_live_and_escape_restores(tmp_path, ollama):
@@ -864,7 +1127,11 @@ def test_friendly_errors():
     assert "ollama list" in tui.friendly_error(404, "model not found")
 
 
-@pytest.mark.parametrize("mood", ["idle", "think", "talk", "happy", "cry", "sleep"])
+MOODS = ["idle", "think", "talk", "happy", "cry", "sleep"]
+MOODS += ["love", "boop", "chew", "zoom", "pout"]
+
+
+@pytest.mark.parametrize("mood", MOODS)
 def test_every_mood_animates_and_stays_in_shape(mood):
     frames = {sprites.pixels(tui.pose_for(mood, frame)) for frame in range(120)}
     assert len(frames) > 1

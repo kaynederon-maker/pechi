@@ -91,12 +91,83 @@ def test_a_plain_reply_is_the_answer_rather_than_a_failure():
         "Thought: done\n**Final Answer**: ok",
         "Thought: done\n### Final Answer:\nok",
         "Thought: done. Final Answer: ok",
-        "final answer: ok",
     ],
 )
 def test_final_answer_markers_survive_markdown(reply):
     assert agent.parse_reply(reply) == ("final", "ok")
     assert agent.split_reply(reply)[1] == "ok"
+
+
+def test_prose_about_a_final_answer_cannot_swallow_a_tool_call():
+    reply = (
+        'Thought: i need the final answer: so\nAction: list_dir\nAction Input: {"a": 1}'
+    )
+    assert agent.parse_reply(reply) == ("action", "list_dir", {"a": 1})
+
+
+def test_an_answer_quoting_a_transcript_in_a_code_block_stays_whole():
+    answer = (
+        "The format looks like this:\n```\nThought: hmm\n"
+        'Action: list_dir\nAction Input: {"path": "."}\n'
+        "Final Answer: done\n```\nThat is all."
+    )
+    assert agent.parse_reply(f"Thought: ok\nFinal Answer: {answer}") == (
+        "final",
+        answer,
+    )
+
+
+IMAGINED = (
+    'Thought: first\nAction: list_dir\nAction Input: {"path": "."}\n'
+    'Thought: it worked\nAction: read_file\nAction Input: {"path": "a"}\n'
+    "Thought: done\nFinal Answer: invented"
+)
+
+
+def test_a_reply_is_over_once_its_first_tool_call_is_complete():
+    assert agent.trim(IMAGINED).endswith('{"path": "."}')
+    assert agent.parse_reply(IMAGINED) == ("action", "list_dir", {"path": "."})
+
+
+def test_an_answer_after_a_tool_call_is_never_shown():
+    assert agent.split_reply(IMAGINED)[1] == ""
+
+
+def test_a_half_streamed_tool_call_shows_no_answer():
+    partial = 'Action: write_file\nAction Input: {"content": "Final Answer: not one'
+    assert agent.split_reply(partial)[1] == ""
+
+
+@pytest.mark.parametrize(
+    "ramble",
+    [
+        '\nAction: web_search\nAction Input: {"query": "x"}',
+        "\nThought: more\nFinal Answer: again",
+        "\nFinal Answer: again",
+    ],
+)
+def test_a_final_answer_ends_the_reply_whatever_follows(ramble):
+    assert agent.parse_reply(f"Thought: a\nFinal Answer: The cake.{ramble}") == (
+        "final",
+        "The cake.",
+    )
+
+
+def test_ordinary_answer_text_is_not_mistaken_for_rambling():
+    answer = "Action: mix it.\nObservation: it rises."
+    reply = f"Final Answer: {answer}"
+    assert agent.trim(reply) == reply
+
+
+def test_the_model_never_sees_its_own_imagined_future(root):
+    seen = []
+
+    def llm(messages):
+        seen.append(messages)
+        return FINAL if len(seen) > 1 else IMAGINED
+
+    assert agent.run_task("t", llm, "s", root) == "ok"
+    assert "invented" not in " ".join(m["content"] for m in seen[1])
 
 
 def test_a_model_rambling_on_after_its_answer_is_trimmed():
@@ -253,8 +324,28 @@ JUNK = "Thought: hmm"  # neither an Action nor an answer
 
 
 def test_breaker_stops_after_repeated_failures(root):
-    answer = agent.run_task("t", scripted(JUNK, JUNK, JUNK, FINAL), "s", root)
-    assert answer.startswith("Stopped after 3 failures")
+    junk = [JUNK] * agent.MAX_FAILURES
+    answer = agent.run_task("t", scripted(*junk, FINAL), "s", root)
+    assert answer.startswith(agent.STOPPED)
+
+
+def test_one_page_cannot_be_fetched_for_ever_with_new_selectors(root, monkeypatch):
+    fetched = []
+
+    def fetch(root, url, selector=""):
+        fetched.append(selector)
+        return "page"
+
+    monkeypatch.setitem(agent.TOOLS, "web_fetch", agent.Tool(fetch, False, "x"))
+    tries = []
+
+    def llm(messages):
+        tries.append(1)
+        return action("web_fetch", url="https://a.example/", selector=f"s{len(tries)}")
+
+    answer = agent.run_task("t", llm, "s", root)
+    assert answer.startswith(agent.STOPPED)
+    assert len(fetched) == agent.MAX_REPEATS
 
 
 def test_success_resets_the_breaker(root):
@@ -292,7 +383,7 @@ def test_a_model_going_round_in_circles_still_stops(root):
         return action("list_dir", path="ab"[len(runs) % 2])
 
     answer = agent.run_task("t", llm, "s", root)
-    assert answer.startswith("Stopped after 3 failures")
+    assert answer.startswith(agent.STOPPED)
     assert len(runs) <= agent.MAX_REPEATS * 2 + agent.MAX_FAILURES
 
 

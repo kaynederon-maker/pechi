@@ -84,6 +84,8 @@ Pechi refuses to write into its own project folder, so run it from somewhere els
 | `ctrl+t` or `/brain` | Switch between the 9B and 35B models, even in the middle of a task |
 | `ctrl+g` or `/theme` | Change the theme, with a live preview |
 | `/auto` | Turn continue all on or off |
+| Click Pechi, `ctrl+p` or `/pet` | Pet Pechi. The ears, head, nose and belly each get their own reaction |
+| `/boop` and `/treat` | Boop the nose, or hand over a treat |
 | `ctrl+l` or `/clear` | Start a fresh chat |
 | `pgup` and `pgdn` | Scroll the chat. New text follows again once you are back at the bottom |
 | `esc` | Stop the current task. Say "continue" to pick it up |
@@ -97,7 +99,7 @@ Pechi can read and write files, run shell commands and Python, search the web,
 read pages, and scrape them with a CSS selector. Pages that need JavaScript come
 back thin.
 
-There is no step limit. A task runs until it finishes, you press `esc`, or three
+There is no step limit. A task runs until it finishes, you press `esc`, or five
 steps in a row fail, and every step's reasoning and tool work stays on screen. If
 Ollama cuts a long reply off, Pechi resumes it by itself. A stopped task keeps its
 work, so saying "continue" carries on from there.
