@@ -451,8 +451,58 @@ def test_stopping_keeps_the_work_so_continue_can_pick_it_up(tmp_path, ollama):
         assert "step one of the plan" in kept and "halfway through step two" in kept
         await send(pilot, "continue")
         await until_idle(pilot)
-        carried = " ".join(m["content"] for m in ollama["chats"][-1]["messages"])
+        sent = ollama["chats"][-1]["messages"]
+        carried = " ".join(m["content"] for m in sent)
         assert "step one of the plan" in carried and "big job" in carried
+        assert sent[-1]["content"] == f"continue\n\n{tui.RESUME_NOTE}"
+        assert "not finished" not in carried.lower()  # a label a model will parrot
+        assert app.history[-2]["content"] == "continue"
+
+    drive(app, script)
+
+
+def test_the_resume_note_goes_out_once_and_only_after_a_stop(tmp_path, ollama):
+    ollama["replies"] = [
+        "Thought: x\nFinal Answer: one",
+        ("Thought: the plan", "hold"),
+        "Thought: x\nFinal Answer: two",
+        "Thought: x\nFinal Answer: three",
+    ]
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await send(pilot, "first")
+        await until_idle(pilot)
+        await send(pilot, "second")
+        for _ in range(200):
+            await pilot.pause(0.02)
+            if len(ollama["chats"]) == 2:
+                break
+        await pilot.pause(0.3)
+        await pilot.press("escape")
+        ollama["release"].set()
+        await until_idle(pilot)
+        await send(pilot, "continue")
+        await until_idle(pilot)
+        await send(pilot, "fourth")
+        await until_idle(pilot)
+        last = [chat["messages"][-1]["content"] for chat in ollama["chats"]]
+        assert [tui.RESUME_NOTE in text for text in last] == [False, False, True, False]
+
+    drive(app, script)
+
+
+def test_clearing_the_chat_forgets_a_stopped_task(tmp_path, ollama):
+    ollama["replies"] = ["Thought: the plan"] * 3 + ["Thought: x\nFinal Answer: ok"]
+    app = make_app(tmp_path)
+
+    async def script(pilot):
+        await send(pilot, "go")
+        await until_idle(pilot)
+        await pilot.press("ctrl+l")
+        await send(pilot, "new")
+        await until_idle(pilot)
+        assert ollama["chats"][-1]["messages"][-1]["content"] == "new"
 
     drive(app, script)
 
@@ -577,6 +627,7 @@ def test_a_surprise_inside_the_worker_is_reported_not_fatal(tmp_path, ollama):
         await until_idle(pilot)
         assert app.busy is False
         assert "surprise" in str(app.query_one(".note", Static).render())
+        assert app.history == ()  # nothing was done, so nothing to continue
 
     drive(app, script)
 

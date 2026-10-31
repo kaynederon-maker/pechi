@@ -59,6 +59,12 @@ ASK_POLL_SECONDS = 0.2
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 COMMANDS = ("/auto", "/brain", "/theme", "/clear", "/help", "/quit")
 HINTS = "ctrl+t switch brain   ctrl+g theme   /auto continue all   pgup/pgdn scroll   esc stop   /help"
+# A bare "continue" tells a model nothing, and the 35B answered it by copying its work.
+RESUME_NOTE = (
+    "Your last task stopped before it finished, and your work so far is above. If this "
+    "message means carry on, do not repeat any of it: continue from exactly where it "
+    "stopped and finish everything in Final Answer."
+)
 HELP = """**What Pechi can do**
 
 Read and write files in this folder, run commands and Python, search the web, and read or scrape pages.
@@ -127,11 +133,6 @@ def trimmed(text: str) -> str:
     if len(text) <= HISTORY_CHARS:
         return text
     return f"[start elided]\n{text[-HISTORY_CHARS:]}"
-
-
-def unfinished(replies: list[str]) -> str:
-    """A stopped task's working, so that "continue" has something to continue."""
-    return "Not finished yet. My work so far:\n\n" + "\n\n".join(filter(None, replies))
 
 
 def load_config() -> dict:
@@ -411,6 +412,7 @@ class PechiApp(App[None]):
         self.stop_flag = threading.Event()
         self.busy = False
         self.history: tuple = ()
+        self.resuming = False  # the last task stopped and its work is in the history
         self.trusted_sites: set[str] = set()
         self.quiet_frames = 0
         self.swap_frame = 0
@@ -672,6 +674,7 @@ class PechiApp(App[None]):
             self.say_mood("think", "press esc first!")
             return
         self.history = ()
+        self.resuming = False
         self.chat.remove_children()
         self.greet()
 
@@ -737,15 +740,23 @@ class PechiApp(App[None]):
             {"role": "assistant", "content": trimmed(reply)},
         )[-MAX_HISTORY:]
 
+    def keep_work(self, task: str, replies: list[str]) -> None:
+        """Hold on to a stopped task's working, so "continue" has something to continue."""
+        work = "\n\n".join(filter(None, replies))
+        if work:
+            self.remember(task, work)
+            self.resuming = True
+
     async def finish_turn(
         self, turn: Turn, task: str, answer: str, replies: list[str]
     ) -> None:
         turn.drop_echo(answer)
         await turn.show_answer(answer)
         stopped = answer.startswith(STOPPED)
-        self.remember(
-            task, unfinished(replies) if stopped else f"Final Answer: {answer}"
-        )
+        if stopped:
+            self.keep_work(task, replies)
+        else:
+            self.remember(task, f"Final Answer: {answer}")
         self.busy = False
         self.say_mood("cry" if stopped else "happy")
         if not stopped:
@@ -806,12 +817,14 @@ class PechiApp(App[None]):
             self.call_from_thread(self.show_event, turn, kind, data)
 
         def failed(mood: str, words: str, message: str) -> None:
-            self.remember(task, unfinished([*replies, partial]))
+            self.keep_work(task, [*replies, partial])
             self.call_from_thread(self.turn_failed, turn, mood, words, message)
 
+        request = f"{task}\n\n{RESUME_NOTE}" if self.resuming else task
+        self.resuming = False
         try:
             answer = run_task(
-                task,
+                request,
                 llm,
                 system_prompt(self.workspace),
                 self.workspace,
