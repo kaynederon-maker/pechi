@@ -1,0 +1,307 @@
+/* Pechi's look. Everything soft-edged, and everything eases instead of jumping. */
+
+Screen {
+    layers: base overlay;
+    background: $background;
+    color: $foreground;
+    transition: background 350ms in_out_cubic, color 350ms in_out_cubic;
+}
+
+#top {
+    height: 1;
+    padding: 0 2;
+    background: $panel;
+    color: $foreground;
+    transition: background 350ms in_out_cubic, color 350ms in_out_cubic;
+}
+
+#main {
+    height: 1fr;
+}
+
+#side {
+    width: 32;
+    height: 100%;
+    padding: 1 2;
+    background: $panel;
+    align-horizontal: center;
+    transition: background 350ms in_out_cubic;
+}
+
+#mascot {
+    width: 28;
+    height: 14;
+    transition: offset 180ms out_cubic;
+}
+
+#bubble {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+    padding: 0 1;
+    border: round $primary;
+    background: transparent;
+    color: $foreground;
+    text-align: center;
+    transition: color 350ms in_out_cubic;
+}
+
+.heart {
+    layer: overlay;
+    width: 2;
+    height: 1;
+    color: $accent;
+    position: absolute;
+    transition: offset 900ms out_cubic, opacity 900ms in_cubic;
+}
+
+#chat {
+    width: 1fr;
+    height: 100%;
+    padding: 1 2;
+    scrollbar-size: 1 1;
+    scrollbar-color: $primary 25%;
+    scrollbar-background: $background;
+    scrollbar-corner-color: $background;
+    scrollbar-background-hover: $background;
+    scrollbar-background-active: $background;
+}
+
+.row {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+    opacity: 0%;
+    offset-y: 2;
+    transition: opacity 280ms out_cubic, offset 280ms out_cubic;
+}
+
+.row.shown {
+    opacity: 100%;
+    offset-y: 0;
+}
+
+.you-row {
+    align-horizontal: right;
+}
+
+.you {
+    width: auto;
+    max-width: 75%;
+    height: auto;
+    padding: 0 2;
+    border: round $primary;
+    background: transparent;
+    color: $foreground;
+    transition: color 350ms in_out_cubic;
+}
+
+.name {
+    height: 1;
+    color: $accent;
+    text-style: bold;
+}
+
+.thought {
+    height: auto;
+    color: $pechi-muted;
+    padding: 0 0 0 2;
+}
+
+.step {
+    height: auto;
+    color: $pechi-muted;
+    padding: 0 0 0 2;
+}
+
+.step.done {
+    color: $success;
+}
+
+.step.failed {
+    color: $error;
+}
+
+.answer {
+    height: auto;
+    display: none;
+    margin: 0;
+    padding: 0 2;
+    background: transparent;
+    color: $foreground;
+}
+
+.answer.on {
+    display: block;
+}
+
+.note {
+    height: auto;
+    padding: 0 2;
+    border: round $error;
+    background: $surface;
+    color: $foreground;
+}
+
+#prompt {
+    height: 3;
+    margin: 0 2;
+    border: round $primary;
+    background: transparent;
+    color: $foreground;
+    transition: color 350ms in_out_cubic;
+}
+
+#prompt:focus {
+    border: round $accent;
+}
+
+#prompt>.input--placeholder {
+    color: $pechi-muted;
+}
+
+#hints {
+    height: 1;
+    padding: 0 3;
+    color: $pechi-muted;
+    transition: color 350ms in_out_cubic;
+}
+
+#swap {
+    layer: overlay;
+    dock: top;
+    width: 46;
+    height: 5;
+    margin: 2 0 0 2;
+    padding: 0 2;
+    border: round $accent;
+    background: $surface;
+    color: $foreground;
+    content-align: center middle;
+    text-align: center;
+    display: none;
+    opacity: 0%;
+    offset-y: -4;
+    transition: opacity 240ms out_cubic, offset 320ms out_back;
+}
+
+#swap.on {
+    display: block;
+}
+
+#swap.shown {
+    opacity: 100%;
+    offset-y: 0;
+}
+
+/* The sidebar steps aside on a narrow window. */
+.-narrow #side {
+    display: none;
+}
+
+/* Intro */
+Intro {
+    align: center middle;
+    background: $background;
+    transition: opacity 300ms in_cubic;
+}
+
+Intro.leaving {
+    opacity: 0%;
+}
+
+#intro-pup {
+    width: 26;
+    height: 14;
+    opacity: 0%;
+    offset-y: 7;
+    transition: offset 620ms out_bounce, opacity 200ms out_cubic;
+}
+
+#intro-pup.in {
+    opacity: 100%;
+    offset-y: 0;
+}
+
+#intro-name {
+    width: 26;
+    height: 1;
+    margin-top: 1;
+    text-align: center;
+    color: $accent;
+    text-style: bold;
+}
+
+#intro-tag {
+    width: 26;
+    height: 1;
+    text-align: center;
+    color: $pechi-muted;
+    opacity: 0%;
+    transition: opacity 320ms out_cubic;
+}
+
+#intro-tag.in {
+    opacity: 100%;
+}
+
+/* Cards that rise from below */
+Approval, ThemePicker {
+    align: center bottom;
+    background: $background 45%;
+}
+
+.card {
+    width: 72;
+    max-width: 92%;
+    height: auto;
+    max-height: 80%;
+    margin-bottom: 2;
+    padding: 1 2;
+    border: round $accent;
+    background: $surface;
+    color: $foreground;
+    offset-y: 6;
+    transition: offset 300ms out_back;
+}
+
+/* Slide only: a fade would freeze the theme list's rows in their invisible state. */
+.card.shown {
+    offset-y: 0;
+}
+
+.card-title {
+    height: auto;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.card-body {
+    height: auto;
+    max-height: 12;
+    overflow-y: auto;
+    color: $foreground;
+    margin-bottom: 1;
+}
+
+.card-keys {
+    height: auto;
+    color: $pechi-muted;
+}
+
+#themes {
+    height: auto;
+    max-height: 10;
+    border: none;
+    background: transparent;
+    color: $foreground;
+    margin-bottom: 1;
+}
+
+#themes>.option-list--option-highlighted,
+#themes:focus>.option-list--option-highlighted {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}

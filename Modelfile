@@ -1,0 +1,8 @@
+# Only needed after the distill route, to import the exported model:
+#     ollama create pechi-custom -f Modelfile
+# Then add it to MODELS in pechi_agent.py so the brain toggle can reach it.
+FROM ./out/pechi.Q4_K_M.gguf
+
+# A local GGUF does not inherit these from an Ollama model.
+RENDERER qwen3.5
+PARSER qwen3.5

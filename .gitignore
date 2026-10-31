@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+data/
+out/
+llama.cpp/
+prompts.txt
+pechi_audit.jsonl
+*.gguf
+*.safetensors
+*.bin
+*.pt

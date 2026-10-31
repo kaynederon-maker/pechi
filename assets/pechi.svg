@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="pechi-title">
+  <title id="pechi-title">Pechi, a round fawn Belgian Malinois puppy with a black mask and tall ears</title>
+  <g stroke="#4B3527" stroke-width="8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M338 404 C376 406 406 386 412 350 C414 338 430 340 434 354 C444 398 396 446 338 442 Z" fill="#D9A66A"/>
+    <path d="M412 350 C414 338 430 340 434 354 C437 368 434 382 427 394 C424 378 418 362 412 350 Z" fill="#4B3527"/>
+    <path d="M170 372 C150 416 150 474 196 478 L316 478 C362 474 362 416 342 372 Z" fill="#D9A66A"/>
+    <path d="M214 410 C232 424 280 424 298 410 C306 438 296 476 256 476 C216 476 206 438 214 410 Z" fill="#F4E2C6" stroke="none"/>
+    <path d="M184 478 C160 480 158 450 184 448 C210 446 214 478 184 478 Z" fill="#E7BE8A"/>
+    <path d="M328 478 C352 480 354 450 328 448 C302 446 298 478 328 478 Z" fill="#E7BE8A"/>
+    <path d="M130 196 C104 130 112 62 142 28 C182 58 226 116 240 170 Z" fill="#3B2C26"/>
+    <path d="M382 196 C408 130 400 62 370 28 C330 58 286 116 272 170 Z" fill="#3B2C26"/>
+    <path d="M150 170 C136 128 136 92 148 66 C172 92 194 124 208 158 Z" fill="#E9A99B" stroke="none"/>
+    <path d="M362 170 C376 128 376 92 364 66 C340 92 318 124 304 158 Z" fill="#E9A99B" stroke="none"/>
+    <path d="M256 134 C356 130 438 180 442 260 C446 338 362 392 256 392 C150 392 66 338 70 260 C74 180 156 138 256 134 Z" fill="#D9A66A"/>
+    <path d="M251 150 C249 168 250 182 256 198 C262 182 263 168 261 150 Z" fill="#3B2C26" stroke="none"/>
+    <path d="M256 240 C214 240 180 270 178 312 C176 354 212 384 256 384 C300 384 336 354 334 312 C332 270 298 240 256 240 Z" fill="#3B2C26" stroke="none"/>
+  </g>
+  <ellipse cx="166" cy="224" rx="14" ry="8" transform="rotate(-14 166 224)" fill="#3B2C26"/>
+  <ellipse cx="346" cy="224" rx="14" ry="8" transform="rotate(14 346 224)" fill="#3B2C26"/>
+  <ellipse cx="150" cy="268" rx="19" ry="23" fill="#2A1D18"/>
+  <ellipse cx="362" cy="268" rx="19" ry="23" fill="#2A1D18"/>
+  <circle cx="143" cy="259" r="7.5" fill="#FFF8EE"/>
+  <circle cx="355" cy="259" r="7.5" fill="#FFF8EE"/>
+  <circle cx="156" cy="276" r="3.5" fill="#FFF8EE"/>
+  <circle cx="368" cy="276" r="3.5" fill="#FFF8EE"/>
+  <ellipse cx="116" cy="312" rx="30" ry="17" fill="#EE9C8E" opacity="0.72"/>
+  <ellipse cx="396" cy="312" rx="30" ry="17" fill="#EE9C8E" opacity="0.72"/>
+  <path d="M226 284 C236 274 276 274 286 284 C290 298 268 314 256 314 C244 314 222 298 226 284 Z" fill="#17100D"/>
+  <ellipse cx="244" cy="288" rx="9" ry="4.5" fill="#FFF8EE" opacity="0.75"/>
+  <path d="M256 314 L256 330 M224 334 C234 346 248 344 256 330 C264 344 278 346 288 334" fill="none" stroke="#E7BE8A" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M170 386 C206 414 306 414 342 386" fill="none" stroke="#4B3527" stroke-width="24" stroke-linecap="round"/>
+  <path d="M170 386 C206 414 306 414 342 386" fill="none" stroke="#8C5A3C" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="256" cy="418" r="17" fill="#E8C468" stroke="#4B3527" stroke-width="8"/>
+</svg>
